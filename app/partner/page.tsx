@@ -1,3 +1,4 @@
+// app/partner/page.tsx
 "use client";
 
 import { useState, useEffect } from "react";
@@ -16,9 +17,24 @@ import {
   Sparkles,
   Flame,
   ShieldCheck,
+  MessageCircle,
+  ChefHat,
+  TrendingUp,
+  Pencil,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { FAISALABAD_AREAS } from "@/data/areas";
+
+const CUISINE_OPTIONS = [
+  "Burgers & Fast Food",
+  "Desi & Karahi",
+  "Pizza",
+  "Biryani & Pulao",
+  "BBQ & Tikka",
+  "Chai & Paratha",
+  "Chinese & Continental",
+  "Desserts & Shakes",
+];
 
 async function compressImageFile(file: File): Promise<Blob> {
   return new Promise((resolve) => {
@@ -46,9 +62,9 @@ export default function PartnerApplicationPage() {
   const [ownerPhone, setOwnerPhone] = useState("");
   const [ownerEmail, setOwnerEmail] = useState("");
   const [area, setArea] = useState("D Ground");
-  const [cuisine, setCuisine] = useState("Fast Food & Burgers");
+  const [cuisine, setCuisine] = useState("Burgers & Fast Food");
   const [deliveryTime, setDeliveryTime] = useState("25-35 min");
-  const [discountPercent, setDiscountPercent] = useState(10);
+  const [discountInput, setDiscountInput] = useState("0");
   const [dealBanner, setDealBanner] = useState("");
   const [description, setDescription] = useState("");
   const [imageUrl, setImageUrl] = useState("");
@@ -118,22 +134,36 @@ export default function PartnerApplicationPage() {
     setSubmitting(true);
     setError("");
 
+    const parsedDiscount = Math.min(
+      70,
+      Math.max(0, Number.parseInt(discountInput, 10) || 0)
+    );
+    const cleanRestaurantName = restaurantName.trim();
+    const cleanOwnerName = ownerName.trim();
+    const cleanOwnerPhone = ownerPhone.trim();
+    const cleanOwnerEmail = ownerEmail.trim().toLowerCase();
+    const cleanCuisine = cuisine.trim();
+    const cleanDeliveryTime = deliveryTime.trim();
+    const cleanDealBanner = dealBanner.trim() || null;
+    const cleanDescription = description.trim() || null;
+    const cleanImageUrl = imageUrl.trim() || null;
+
     const supabase = createClient();
     const { error: insertErr } = await supabase
       .from("partner_requests")
       .insert({
         user_id: userId,
-        restaurant_name: restaurantName.trim(),
-        owner_name: ownerName.trim(),
-        owner_phone: ownerPhone.trim(),
-        owner_email: ownerEmail.trim().toLowerCase(),
+        restaurant_name: cleanRestaurantName,
+        owner_name: cleanOwnerName,
+        owner_phone: cleanOwnerPhone,
+        owner_email: cleanOwnerEmail,
         area,
-        cuisine: cuisine.trim(),
-        delivery_time: deliveryTime.trim(),
-        discount_percent: Number(discountPercent) || 0,
-        deal_banner: dealBanner.trim() || null,
-        description: description.trim() || null,
-        image_url: imageUrl.trim() || null,
+        cuisine: cleanCuisine,
+        delivery_time: cleanDeliveryTime,
+        discount_percent: parsedDiscount,
+        deal_banner: cleanDealBanner,
+        description: cleanDescription,
+        image_url: cleanImageUrl,
         status: "pending",
       });
 
@@ -143,48 +173,109 @@ export default function PartnerApplicationPage() {
       return;
     }
 
+    // Trigger email notification Edge Function without blocking UI confirmation
+    supabase.functions
+      .invoke("notify-partner-application", {
+        body: {
+          record: {
+            restaurant_name: cleanRestaurantName,
+            owner_name: cleanOwnerName,
+            owner_phone: cleanOwnerPhone,
+            owner_email: cleanOwnerEmail,
+            area,
+            cuisine: cleanCuisine,
+            delivery_time: cleanDeliveryTime,
+            discount_percent: parsedDiscount,
+            deal_banner: cleanDealBanner,
+            description: cleanDescription,
+            image_url: cleanImageUrl,
+            status: "pending",
+          },
+        },
+      })
+      .catch(() => {
+        // Ignore notification error so application confirmation still succeeds
+      });
+
+    setDiscountInput(String(parsedDiscount));
     setSubmitting(false);
     setSubmitted(true);
   };
 
   if (submitted) {
+    const whatsappMessage = encodeURIComponent(
+      `Salam The SP Food Team! New kitchen partner application:\n• Restaurant: ${restaurantName} (${area}, Faisalabad)\n• Owner: ${ownerName}\n• WhatsApp: ${ownerPhone}\n• Email: ${ownerEmail}`
+    );
+
     return (
-      <div className="min-h-screen bg-[#0F1115] text-white flex items-center justify-center px-4 py-12">
-        <div className="max-w-lg w-full bg-[#181B20] border border-[#F5C542]/30 rounded-2xl p-8 text-center space-y-4 shadow-2xl">
-          <CheckCircle2 className="w-16 h-16 text-emerald-400 mx-auto" />
-          <h1 className="text-2xl font-extrabold text-white">
-            Kitchen Application Received!
-          </h1>
-          <p className="text-sm text-zinc-300 leading-relaxed">
-            Thank you, <strong>{ownerName}</strong>. Our Faisalabad onboarding
-            team will verify <strong>{restaurantName}</strong> ({area}) and
-            activate your Restaurant Studio shortly.
-          </p>
-          <div className="bg-[#0F1115] border border-white/10 rounded-xl p-4 text-xs text-zinc-400 space-y-1">
-            <p>
-              Owner Login Email:{" "}
-              <span className="text-[#F5C542] font-semibold">{ownerEmail}</span>
-            </p>
-            <p>
-              Make sure you have created an account with this email on{" "}
-              <Link href="/login" className="text-[#FF5A1F] underline">
-                Sign In / Register
-              </Link>{" "}
-              so you can manage your menu as soon as approved.
+      <div className="min-h-screen bg-[#1C2029] text-white flex items-center justify-center px-4 py-12 tracking-[0.015em]">
+        <div className="max-w-lg w-full bg-[#242934] border border-[#FFD43B]/40 rounded-2xl p-7 sm:p-8 text-center space-y-5 shadow-2xl">
+          <div className="w-16 h-16 rounded-full bg-emerald-500/15 border border-emerald-400/40 flex items-center justify-center mx-auto">
+            <CheckCircle2 className="w-10 h-10 text-emerald-400" />
+          </div>
+
+          <div className="space-y-2">
+            <span className="inline-block bg-[#FFD43B] text-[#1C2029] text-[10px] font-bold uppercase tracking-widest px-3 py-1 rounded-full">
+              Application Submitted
+            </span>
+            <h1 className="text-2xl font-extrabold text-white">
+              Kitchen Application Received!
+            </h1>
+            <p className="text-sm text-slate-100 leading-relaxed">
+              Thank you, <strong className="text-white">{ownerName}</strong>.
+              Our Faisalabad onboarding team will verify{" "}
+              <strong className="text-[#FFD43B]">{restaurantName}</strong> (
+              {area}) and activate your Restaurant Kitchen Studio shortly.
             </p>
           </div>
-          <div className="pt-2 flex flex-wrap items-center justify-center gap-3">
+
+          <div className="bg-[#2E3442] border border-white/15 rounded-xl p-4 text-left text-xs text-slate-100 space-y-2">
+            <p>
+              Owner Login Email:{" "}
+              <span className="text-[#FFD43B] font-bold">{ownerEmail}</span>
+            </p>
+            <p className="leading-relaxed">
+              Make sure you have registered an account with this exact email on{" "}
+              <Link
+                href="/login"
+                className="text-[#FF8A50] font-semibold underline hover:text-[#FFD43B]"
+              >
+                Sign In / Register
+              </Link>{" "}
+              so you can access <strong className="text-white">/owner</strong>{" "}
+              as soon as approved.
+            </p>
+          </div>
+
+          <div className="pt-2 flex flex-col sm:flex-row flex-wrap items-center justify-center gap-3">
+            <a
+              href={`https://wa.me/923001234567?text=${whatsappMessage}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="w-full sm:w-auto inline-flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-bold px-5 py-3 rounded-full transition-colors"
+            >
+              <MessageCircle className="w-4 h-4" />
+              Fast-Track on WhatsApp
+            </a>
+
+            <button
+              type="button"
+              onClick={() => {
+                setError("");
+                setSubmitted(false);
+              }}
+              className="w-full sm:w-auto inline-flex items-center justify-center gap-2 bg-[#2E3442] hover:bg-white/15 border border-[#FFD43B]/60 text-[#FFD43B] text-sm font-bold px-5 py-3 rounded-full transition-colors cursor-pointer"
+            >
+              <Pencil className="w-4 h-4" />
+              Edit Application
+            </button>
+
             <Link
               href="/"
-              className="bg-[#FF5A1F] hover:bg-[#e04e18] text-white text-sm font-bold px-6 py-3 rounded-full transition-colors"
+              className="w-full sm:w-auto inline-flex items-center justify-center gap-2 bg-[#FF6B2B] hover:bg-[#ff5714] text-white text-sm font-bold px-6 py-3 rounded-full transition-colors"
             >
-              Back to Storefront
-            </Link>
-            <Link
-              href="/login"
-              className="bg-[#0F1115] border border-white/10 text-zinc-200 text-sm font-semibold px-6 py-3 rounded-full hover:border-white/25 transition-colors"
-            >
-              Owner Sign In
+              <ArrowLeft className="w-4 h-4" />
+              Go Back to Storefront
             </Link>
           </div>
         </div>
@@ -193,166 +284,218 @@ export default function PartnerApplicationPage() {
   }
 
   return (
-    <div className="min-h-screen bg-[#0F1115] text-white pb-16">
+    <div className="min-h-screen bg-[#1C2029] text-white pb-16 tracking-[0.015em] antialiased">
       {/* Header */}
-      <header className="sticky top-0 z-40 bg-[#0F1115]/95 backdrop-blur-md border-b border-white/10">
+      <header className="sticky top-0 z-40 bg-[#242934]/95 backdrop-blur-md border-b border-white/15 shadow-md">
         <div className="max-w-4xl mx-auto px-4 h-16 flex items-center justify-between gap-3">
           <div className="flex items-center gap-3">
             <Link
               href="/"
-              className="bg-[#181B20] border border-white/10 p-2 rounded-full text-white hover:border-[#FF5A1F] transition-colors"
+              className="bg-[#2E3442] border border-white/20 p-2 rounded-full text-white hover:border-[#FFD43B] transition-colors shrink-0"
+              title="Go Back to Storefront"
             >
               <ArrowLeft className="w-5 h-5" />
             </Link>
-            <div className="flex items-center gap-2">
+            <Link href="/" className="flex items-center gap-2.5">
               <img
-                src="/logo.png"
+                src="/logo.png?v=3"
                 alt="The SP Food"
-                className="w-8 h-8 rounded-full object-cover border border-[#FF5A1F]/40"
+                className="w-11 h-11 rounded-full object-cover border-2 border-[#FFD43B] shrink-0"
               />
-              <span className="font-bold text-base sm:text-lg text-white">
-                Partner With <span className="text-[#FF5A1F]">The SP Food</span>
-              </span>
-            </div>
+              <div className="leading-tight">
+                <span className="font-bold text-base sm:text-lg text-[#FFD43B] block">
+                  The SP Food
+                </span>
+                <span className="text-[10px] font-semibold uppercase tracking-[0.14em] text-white block">
+                  Partner Onboarding
+                </span>
+              </div>
+            </Link>
           </div>
 
           <Link
-            href="/login"
-            className="text-xs font-semibold bg-[#181B20] hover:bg-white/10 border border-white/10 px-3.5 py-2 rounded-full text-zinc-200"
+            href="/owner"
+            className="text-xs font-bold bg-[#2E3442] hover:bg-white/15 border border-[#FFD43B]/40 px-4 py-2 rounded-full text-[#FFD43B] transition-colors shrink-0"
           >
-            Existing Owner Login
+            Kitchen Portal
           </Link>
         </div>
       </header>
 
-      <main className="max-w-4xl mx-auto px-4 py-8 space-y-6">
+      <main className="max-w-4xl mx-auto px-4 py-7 space-y-6">
         {/* Hero Pitch */}
-        <section className="bg-gradient-to-r from-[#181B20] via-[#1C1917] to-[#181B20] border border-[#F5C542]/25 rounded-2xl p-6 space-y-3">
-          <span className="inline-flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-widest text-[#F5C542] bg-[#F5C542]/10 border border-[#F5C542]/25 px-3 py-1 rounded-full">
-            <Flame className="w-3.5 h-3.5" /> Faisalabad Kitchen Onboarding
-          </span>
-          <h1 className="text-2xl sm:text-3xl font-extrabold text-white">
-            Grow Your Restaurant Orders Across Faisalabad
+        <section className="bg-[#242934] border border-[#FFD43B]/35 rounded-2xl p-6 sm:p-7 space-y-4 shadow-xl">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <span className="inline-flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-widest text-[#1C2029] bg-[#FFD43B] px-3 py-1 rounded-full">
+              <Flame className="w-3.5 h-3.5" /> Faisalabad Kitchen Partner Program
+            </span>
+            <span className="text-xs font-semibold text-emerald-300">
+              Free Menu Setup &amp; Listing
+            </span>
+          </div>
+
+          <h1 className="text-2xl sm:text-3xl font-extrabold text-white leading-snug">
+            List Your Restaurant on{" "}
+            <span className="text-[#FFD43B]">The SP Food</span>
           </h1>
-          <p className="text-xs sm:text-sm text-zinc-300 leading-relaxed max-w-2xl">
-            Reach hungry customers in D Ground, Kohinoor, People&apos;s Colony 1 &amp; 2,
-            Satiana Road, and Madina Town. Control your own menu photos, delivery
-            times, and daily combo deals from your Owner Studio.
+
+          <p className="text-xs sm:text-sm text-slate-100 leading-relaxed max-w-2xl">
+            Receive direct online orders across{" "}
+            <strong className="text-white">
+              D Ground, Kohinoor, People&apos;s Colony 1 &amp; 2, Satiana Road,
+              and Madina Town
+            </strong>
+            . Manage your live kitchen queue, menu items, and combo offers
+            from your own Owner Studio.
           </p>
-          <div className="flex flex-wrap gap-4 pt-1 text-xs text-zinc-400">
-            <span className="flex items-center gap-1.5">
-              <ShieldCheck className="w-4 h-4 text-emerald-400" />
-              Zero deduction from your food prices for SP Spin Rewards
-            </span>
-            <span className="flex items-center gap-1.5">
-              <Sparkles className="w-4 h-4 text-[#F5C542]" />
-              Dedicated Rider Dispatch
-            </span>
+
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-1">
+            <div className="bg-[#2E3442] border border-white/15 rounded-xl p-3.5 flex items-start gap-2.5">
+              <ShieldCheck className="w-5 h-5 text-emerald-400 shrink-0 mt-0.5" />
+              <div>
+                <p className="text-xs font-bold text-white">
+                  100% Menu Price Protection
+                </p>
+                <p className="text-[11px] text-slate-200 mt-0.5">
+                  Zero deduction from your dish prices for SP Spin Rewards.
+                </p>
+              </div>
+            </div>
+
+            <div className="bg-[#2E3442] border border-white/15 rounded-xl p-3.5 flex items-start gap-2.5">
+              <ChefHat className="w-5 h-5 text-[#FFD43B] shrink-0 mt-0.5" />
+              <div>
+                <p className="text-xs font-bold text-white">
+                  Live Kitchen Dashboard
+                </p>
+                <p className="text-[11px] text-slate-200 mt-0.5">
+                  Instant order alerts, item availability toggles &amp; deals.
+                </p>
+              </div>
+            </div>
+
+            <div className="bg-[#2E3442] border border-white/15 rounded-xl p-3.5 flex items-start gap-2.5">
+              <TrendingUp className="w-5 h-5 text-[#FF8A50] shrink-0 mt-0.5" />
+              <div>
+                <p className="text-xs font-bold text-white">
+                  Local Rider Fleet
+                </p>
+                <p className="text-[11px] text-slate-200 mt-0.5">
+                  Fast zone-based dispatch so food arrives hot.
+                </p>
+              </div>
+            </div>
           </div>
         </section>
 
         {/* Application Form */}
         <form
           onSubmit={handleSubmit}
-          className="bg-[#181B20] border border-white/10 rounded-2xl p-6 space-y-6 shadow-xl"
+          className="bg-[#242934] border border-white/15 rounded-2xl p-6 sm:p-7 space-y-6 shadow-xl"
         >
-          {/* Owner Contact Info */}
+          {/* Step 1: Owner Contact Info */}
           <div className="space-y-4">
-            <h2 className="text-base font-bold text-white border-b border-white/10 pb-2.5">
-              1. Owner / Manager Contact Details
+            <h2 className="text-base font-bold text-[#FFD43B] border-b border-white/15 pb-2.5 flex items-center gap-2">
+              <span className="w-6 h-6 rounded-full bg-[#FF6B2B] text-white text-xs font-extrabold inline-flex items-center justify-center">
+                1
+              </span>
+              Owner / Manager Contact Details
             </h2>
 
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               <div>
-                <label className="block text-xs text-zinc-300 mb-1.5">
+                <label className="block text-xs font-semibold text-white mb-1.5">
                   Owner Full Name *
                 </label>
                 <div className="relative">
-                  <User className="w-4 h-4 text-[#F5C542] absolute left-3.5 top-1/2 -translate-y-1/2" />
+                  <User className="w-4 h-4 text-[#FFD43B] absolute left-3.5 top-1/2 -translate-y-1/2" />
                   <input
                     required
                     type="text"
                     value={ownerName}
                     onChange={(e) => setOwnerName(e.target.value)}
                     placeholder="e.g. Bilal Ahmed"
-                    className="w-full bg-[#0F1115] border border-white/10 rounded-xl pl-10 pr-3.5 py-2.5 text-sm text-white outline-none focus:border-[#F5C542]"
+                    className="w-full bg-[#2E3442] border border-white/20 rounded-xl pl-10 pr-3.5 py-2.5 text-sm text-white placeholder:text-slate-300 outline-none focus:border-[#FFD43B]"
                   />
                 </div>
               </div>
 
               <div>
-                <label className="block text-xs text-zinc-300 mb-1.5">
+                <label className="block text-xs font-semibold text-white mb-1.5">
                   Phone / WhatsApp *
                 </label>
                 <div className="relative">
-                  <Phone className="w-4 h-4 text-[#F5C542] absolute left-3.5 top-1/2 -translate-y-1/2" />
+                  <Phone className="w-4 h-4 text-[#FFD43B] absolute left-3.5 top-1/2 -translate-y-1/2" />
                   <input
                     required
                     type="tel"
                     value={ownerPhone}
                     onChange={(e) => setOwnerPhone(e.target.value)}
                     placeholder="0300-1234567"
-                    className="w-full bg-[#0F1115] border border-white/10 rounded-xl pl-10 pr-3.5 py-2.5 text-sm text-white outline-none focus:border-[#F5C542]"
+                    className="w-full bg-[#2E3442] border border-white/20 rounded-xl pl-10 pr-3.5 py-2.5 text-sm text-white placeholder:text-slate-300 outline-none focus:border-[#FFD43B]"
                   />
                 </div>
               </div>
 
               <div>
-                <label className="block text-xs text-zinc-300 mb-1.5">
+                <label className="block text-xs font-semibold text-white mb-1.5">
                   Login Email Address *
                 </label>
                 <div className="relative">
-                  <Mail className="w-4 h-4 text-[#F5C542] absolute left-3.5 top-1/2 -translate-y-1/2" />
+                  <Mail className="w-4 h-4 text-[#FFD43B] absolute left-3.5 top-1/2 -translate-y-1/2" />
                   <input
                     required
                     type="email"
                     value={ownerEmail}
                     onChange={(e) => setOwnerEmail(e.target.value)}
                     placeholder="kitchen@example.com"
-                    className="w-full bg-[#0F1115] border border-white/10 rounded-xl pl-10 pr-3.5 py-2.5 text-sm text-white outline-none focus:border-[#F5C542]"
+                    className="w-full bg-[#2E3442] border border-white/20 rounded-xl pl-10 pr-3.5 py-2.5 text-sm text-white placeholder:text-slate-300 outline-none focus:border-[#FFD43B]"
                   />
                 </div>
               </div>
             </div>
           </div>
 
-          {/* Kitchen & Storefront Details */}
+          {/* Step 2: Kitchen & Storefront Details */}
           <div className="space-y-4">
-            <h2 className="text-base font-bold text-white border-b border-white/10 pb-2.5">
-              2. Kitchen &amp; Storefront Profile
+            <h2 className="text-base font-bold text-[#FFD43B] border-b border-white/15 pb-2.5 flex items-center gap-2">
+              <span className="w-6 h-6 rounded-full bg-[#FF6B2B] text-white text-xs font-extrabold inline-flex items-center justify-center">
+                2
+              </span>
+              Kitchen &amp; Storefront Profile
             </h2>
 
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               <div>
-                <label className="block text-xs text-zinc-300 mb-1.5">
+                <label className="block text-xs font-semibold text-white mb-1.5">
                   Restaurant Name *
                 </label>
                 <div className="relative">
-                  <Store className="w-4 h-4 text-[#FF5A1F] absolute left-3.5 top-1/2 -translate-y-1/2" />
+                  <Store className="w-4 h-4 text-[#FF8A50] absolute left-3.5 top-1/2 -translate-y-1/2" />
                   <input
                     required
                     type="text"
                     value={restaurantName}
                     onChange={(e) => setRestaurantName(e.target.value)}
                     placeholder="e.g. Lyallpur Smash Burgers"
-                    className="w-full bg-[#0F1115] border border-white/10 rounded-xl pl-10 pr-3.5 py-2.5 text-sm text-white outline-none focus:border-[#F5C542]"
+                    className="w-full bg-[#2E3442] border border-white/20 rounded-xl pl-10 pr-3.5 py-2.5 text-sm text-white placeholder:text-slate-300 outline-none focus:border-[#FFD43B]"
                   />
                 </div>
               </div>
 
               <div>
-                <label className="block text-xs text-zinc-300 mb-1.5">
+                <label className="block text-xs font-semibold text-white mb-1.5">
                   Faisalabad Zone *
                 </label>
                 <div className="relative">
-                  <MapPin className="w-4 h-4 text-[#FF5A1F] absolute left-3.5 top-1/2 -translate-y-1/2" />
+                  <MapPin className="w-4 h-4 text-[#FF8A50] absolute left-3.5 top-1/2 -translate-y-1/2" />
                   <select
                     value={area}
                     onChange={(e) => setArea(e.target.value)}
-                    className="w-full bg-[#0F1115] border border-white/10 rounded-xl pl-10 pr-3.5 py-2.5 text-sm text-white outline-none focus:border-[#F5C542]"
+                    className="w-full bg-[#2E3442] border border-white/20 rounded-xl pl-10 pr-3.5 py-2.5 text-sm text-white outline-none focus:border-[#FFD43B]"
                   >
                     {FAISALABAD_AREAS.map((a) => (
-                      <option key={a} value={a} className="bg-[#181B20]">
+                      <option key={a} value={a} className="bg-[#242934]">
                         {a}
                       </option>
                     ))}
@@ -361,56 +504,73 @@ export default function PartnerApplicationPage() {
               </div>
 
               <div>
-                <label className="block text-xs text-zinc-300 mb-1.5">
+                <label className="block text-xs font-semibold text-white mb-1.5">
                   Primary Cuisine *
                 </label>
                 <input
                   required
+                  list="sp-cuisine-list"
                   type="text"
                   value={cuisine}
                   onChange={(e) => setCuisine(e.target.value)}
                   placeholder="Burgers, Pizza, Desi BBQ, Biryani"
-                  className="w-full bg-[#0F1115] border border-white/10 rounded-xl px-3.5 py-2.5 text-sm text-white outline-none focus:border-[#F5C542]"
+                  className="w-full bg-[#2E3442] border border-white/20 rounded-xl px-3.5 py-2.5 text-sm text-white placeholder:text-slate-300 outline-none focus:border-[#FFD43B]"
                 />
+                <datalist id="sp-cuisine-list">
+                  {CUISINE_OPTIONS.map((item) => (
+                    <option key={item} value={item} />
+                  ))}
+                </datalist>
               </div>
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               <div>
-                <label className="block text-xs text-zinc-300 mb-1.5">
+                <label className="block text-xs font-semibold text-white mb-1.5">
                   Avg. Prep &amp; Delivery Time
                 </label>
                 <div className="relative">
-                  <Clock className="w-4 h-4 text-zinc-500 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                  <Clock className="w-4 h-4 text-[#FFD43B] absolute left-3.5 top-1/2 -translate-y-1/2" />
                   <input
                     type="text"
                     value={deliveryTime}
                     onChange={(e) => setDeliveryTime(e.target.value)}
                     placeholder="25-35 min"
-                    className="w-full bg-[#0F1115] border border-white/10 rounded-xl pl-10 pr-3.5 py-2.5 text-sm text-white outline-none focus:border-[#F5C542]"
+                    className="w-full bg-[#2E3442] border border-white/20 rounded-xl pl-10 pr-3.5 py-2.5 text-sm text-white placeholder:text-slate-300 outline-none focus:border-[#FFD43B]"
                   />
                 </div>
               </div>
 
               <div>
-                <label className="block text-xs text-zinc-300 mb-1.5">
+                <label className="block text-xs font-semibold text-white mb-1.5">
                   Launch Discount (%)
                 </label>
                 <div className="relative">
-                  <Tag className="w-4 h-4 text-[#FF5A1F] absolute left-3.5 top-1/2 -translate-y-1/2" />
+                  <Tag className="w-4 h-4 text-[#FF8A50] absolute left-3.5 top-1/2 -translate-y-1/2" />
                   <input
                     type="number"
+                    inputMode="numeric"
                     min={0}
                     max={70}
-                    value={discountPercent}
-                    onChange={(e) => setDiscountPercent(Number(e.target.value))}
-                    className="w-full bg-[#0F1115] border border-white/10 rounded-xl pl-10 pr-3.5 py-2.5 text-sm text-white outline-none focus:border-[#F5C542]"
+                    step={1}
+                    value={discountInput}
+                    onFocus={(e) => e.currentTarget.select()}
+                    onChange={(e) => setDiscountInput(e.target.value)}
+                    onBlur={() => {
+                      const cleaned = Math.min(
+                        70,
+                        Math.max(0, Number.parseInt(discountInput, 10) || 0)
+                      );
+                      setDiscountInput(String(cleaned));
+                    }}
+                    placeholder="0"
+                    className="w-full bg-[#2E3442] border border-white/20 rounded-xl pl-10 pr-3.5 py-2.5 text-sm font-semibold text-white placeholder:text-slate-300 outline-none focus:border-[#FFD43B]"
                   />
                 </div>
               </div>
 
               <div>
-                <label className="block text-xs text-zinc-300 mb-1.5">
+                <label className="block text-xs font-semibold text-white mb-1.5">
                   Special Opening Deal (Optional)
                 </label>
                 <input
@@ -418,20 +578,20 @@ export default function PartnerApplicationPage() {
                   value={dealBanner}
                   onChange={(e) => setDealBanner(e.target.value)}
                   placeholder="e.g. Free 500ml drink on Rs. 1,000+"
-                  className="w-full bg-[#0F1115] border border-white/10 rounded-xl px-3.5 py-2.5 text-sm text-white outline-none focus:border-[#F5C542]"
+                  className="w-full bg-[#2E3442] border border-white/20 rounded-xl px-3.5 py-2.5 text-sm text-white placeholder:text-slate-300 outline-none focus:border-[#FFD43B]"
                 />
               </div>
             </div>
 
             {/* Cover Image Upload or URL */}
             <div className="space-y-2">
-              <label className="block text-xs text-zinc-300">
+              <label className="block text-xs font-semibold text-white">
                 Restaurant Cover Banner (Upload Photo or Paste URL)
               </label>
-              <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
-                <label className="cursor-pointer inline-flex items-center justify-center gap-1.5 bg-[#0F1115] hover:bg-white/10 border border-white/15 text-xs font-semibold text-[#F5C542] px-4 py-2.5 rounded-xl shrink-0">
+              <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5">
+                <label className="cursor-pointer inline-flex items-center justify-center gap-2 bg-[#2E3442] hover:bg-white/15 border border-[#FFD43B]/50 text-xs font-bold text-[#FFD43B] px-4 py-2.5 rounded-xl shrink-0 transition-colors">
                   <Upload className="w-4 h-4" />
-                  {uploading ? "Uploading..." : "Upload Cover Photo"}
+                  {uploading ? "Compressing & Uploading..." : "Upload Cover Photo"}
                   <input
                     type="file"
                     accept="image/*"
@@ -444,12 +604,12 @@ export default function PartnerApplicationPage() {
                   type="url"
                   value={imageUrl}
                   onChange={(e) => setImageUrl(e.target.value)}
-                  placeholder="Or paste image URL..."
-                  className="w-full bg-[#0F1115] border border-white/10 rounded-xl px-3.5 py-2.5 text-xs text-white outline-none focus:border-[#F5C542]"
+                  placeholder="Or paste cover image URL..."
+                  className="w-full bg-[#2E3442] border border-white/20 rounded-xl px-3.5 py-2.5 text-xs text-white placeholder:text-slate-300 outline-none focus:border-[#FFD43B]"
                 />
               </div>
               {imageUrl && (
-                <div className="h-32 w-full rounded-xl overflow-hidden border border-white/10 bg-zinc-900">
+                <div className="h-36 w-full rounded-xl overflow-hidden border border-white/20 bg-[#1C2029]">
                   <img
                     src={imageUrl}
                     alt="Cover preview"
@@ -460,7 +620,7 @@ export default function PartnerApplicationPage() {
             </div>
 
             <div>
-              <label className="block text-xs text-zinc-300 mb-1.5">
+              <label className="block text-xs font-semibold text-white mb-1.5">
                 Kitchen Bio &amp; Signature Dishes
               </label>
               <textarea
@@ -468,22 +628,32 @@ export default function PartnerApplicationPage() {
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
                 placeholder="Tell Faisalabad foodies about your specialties, hygiene standards, and best-selling platters..."
-                className="w-full bg-[#0F1115] border border-white/10 rounded-xl px-4 py-2.5 text-sm text-white outline-none focus:border-[#F5C542]"
+                className="w-full bg-[#2E3442] border border-white/20 rounded-xl px-4 py-2.5 text-sm text-white placeholder:text-slate-300 outline-none focus:border-[#FFD43B]"
               />
             </div>
           </div>
 
-          {error && <p className="text-xs text-red-400 font-medium">{error}</p>}
+          {error && (
+            <div className="bg-red-500/15 border border-red-400/40 text-red-200 text-xs font-semibold px-4 py-3 rounded-xl">
+              {error}
+            </div>
+          )}
 
-          <button
-            type="submit"
-            disabled={submitting || uploading}
-            className="w-full sm:w-auto bg-gradient-to-r from-[#FF5A1F] to-[#F59E0B] hover:opacity-95 disabled:opacity-50 text-white text-sm font-extrabold px-8 py-3.5 rounded-xl shadow-lg shadow-[#FF5A1F]/20 transition-opacity"
-          >
-            {submitting
-              ? "Submitting Application..."
-              : "Submit Restaurant Application"}
-          </button>
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pt-2 border-t border-white/15">
+            <p className="text-xs text-slate-200 flex items-center gap-1.5">
+              <Sparkles className="w-4 h-4 text-[#FFD43B] shrink-0" />
+              Applications are reviewed within 2 hours during operating hours.
+            </p>
+            <button
+              type="submit"
+              disabled={submitting || uploading}
+              className="w-full sm:w-auto bg-[#FF6B2B] hover:bg-[#ff5714] disabled:opacity-50 text-white text-sm font-extrabold px-8 py-3.5 rounded-xl shadow-lg shadow-[#FF6B2B]/25 transition-colors cursor-pointer"
+            >
+              {submitting
+                ? "Submitting Application..."
+                : "Submit Restaurant Application"}
+            </button>
+          </div>
         </form>
       </main>
     </div>
